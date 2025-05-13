@@ -48,7 +48,7 @@ def load_config():
         return json.load(f)
 
 # === Constants that don’t change ===
-ALCHEMY_RPC = "https://gensyn-testnet.g.alchemy.com/v2/4TyTt2tvfMxiHAVMk1-iLvtE0RVzM9I1"
+ALCHEMY_RPC = "https://gensyn-testnet.g.alchemy.com/v2/kWjsfs1x2ODpQRf6C-fpPfel0rtlFhb9"
 CONTRACT_ADDRESS = "0x69C6e1D608ec64885E7b185d39b04B491a71768C"
 
 ABI = [
