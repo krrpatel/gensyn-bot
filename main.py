@@ -35,6 +35,7 @@ def get_user_config():
     peer_ids = input("Enter Peer IDs (comma-separated): ").strip().split(",")
     config["PEER_IDS"] = [pid.strip() for pid in peer_ids]
     config["SCREEN_NAME"] = input("Enter your screen session name (e.g., gensyn): ").strip()
+    config["NUM"]= int(input("Enter Custom No : "))
     return config
 
 def save_config(config):
@@ -122,6 +123,7 @@ def main():
     chat_id = config["CHAT_ID"]
     delay = config["DELAY_SECONDS"]
     screen_name = config["SCREEN_NAME"]
+    peerno = config["NUM"]
 
     w3 = Web3(Web3.HTTPProvider(ALCHEMY_RPC))
     contract = w3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=ABI)
@@ -137,7 +139,7 @@ def main():
                 eoa = addresses[i]
                 explorer_link = f"https://gensyn-testnet.explorer.alchemy.com/address/{eoa}?tab=internal_txns"
                 msg = (
-                    f"<b>Peer {i + 1}</b>\n"
+                    f"<b>Peer {peerno}</b>\n"
                     f"Peer ID: <code>{pid}</code>\n"
                     f"EOA: <code>{eoa}</code>\n"
                     f"Total Reward: {rewards[i]}\n"
