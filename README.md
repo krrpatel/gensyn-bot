@@ -80,7 +80,7 @@ cd gensyn-bot
 ### 2. Run the bot
 
 ```bash
-python3 main.py
+python3 bot_run.py
 ```
 
 The script will:
