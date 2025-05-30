@@ -122,7 +122,8 @@ def main():
 
     w3 = Web3(Web3.HTTPProvider(ALCHEMY_RPC))
     contract = w3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=ABI)
-
+    peerno = config["NODE_NO"]
+ 
     while True:
         try:
             messages = []
@@ -144,7 +145,7 @@ def main():
                 status = "🟢 Online" if info["online"] else "🔴 Offline"
 
                 msg = (
-                    f"<b>Peer {NODE_NO}</b>\n"
+                    f"<b>Peer {peerno}</b>\n"
                     f"Name: <code>{name}</code>\n"
                     f"Peer ID: <code>{peer_id}</code>\n"
                     f"EOA: <code>{eoa}</code>\n"
