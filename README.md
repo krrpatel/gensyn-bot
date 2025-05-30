@@ -13,61 +13,6 @@ A Telegram bot that monitors smart contract rewards and logs from a Gensyn testn
 
 ---
 
-## Prerequisites
-
-Make sure your system has the following installed:
-
-### 1. Python 3
-
-Check if Python 3 is installed:
-
-```bash
-python3 --version
-```
-
-If not installed:
-
-#### Ubuntu/Debian:
-```bash
-sudo apt update
-sudo apt install python3 python3-venv python3-pip -y
-```
-
-#### macOS (using Homebrew):
-```bash
-brew install python
-```
-
-#### Windows:
-Download and install from: [https://www.python.org/downloads/](https://www.python.org/downloads/)
-
----
-
-### 2. Git
-
-Check if Git is installed:
-
-```bash
-git --version
-```
-
-If not:
-
-#### Ubuntu/Debian:
-```bash
-sudo apt install git -y
-```
-
-#### macOS:
-```bash
-brew install git
-```
-
-#### Windows:
-Download and install from: [https://git-scm.com/downloads](https://git-scm.com/downloads)
-
----
-
 ## Installation Steps
 
 ### 1. Clone the repository
@@ -76,8 +21,12 @@ Download and install from: [https://git-scm.com/downloads](https://git-scm.com/d
 git clone https://github.com/krrpatel/gensyn-bot.git
 cd gensyn-bot
 ```
+## 2. Create screen
+```bash
+screen -S gensynbot
+```
 
-### 2. Run the bot
+### 3. Run the bot
 
 ```bash
 python3 bot_run.py
