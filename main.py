@@ -44,7 +44,7 @@ def get_user_config():
     words = input("Enter Peer Names (comma-separated, e.g., sly loud alpaca, blue fast tiger): ").strip().split(",")
     config["PEER_NAMES"] = [w.strip() for w in words]
     config["SCREEN_NAME"] = input("Enter screen session name, e.g: gensyn: ").strip()
-    config["NODE_NO"] = int(input("Enter Node No , e.g: 1,2,3: "))
+    config["NODE_NO"] = input("Enter Node No , e.g: 1,2,3: ")
     return config
 
 def save_config(config):
