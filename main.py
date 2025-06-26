@@ -84,7 +84,7 @@ def get_last_screen_logs(screen_name="gensyn", lines=10):
 
 def fetch_peer_data(peer_name):
     url_name = peer_name.replace(" ", "%20")
-    url = f"https://dashboard-math.gensyn.ai/api/v1/peer?name={url_name}"
+    url = f"https://dashboard.gensyn.ai/api/v1/peer?name={url_name}"
     try:
         response = requests.get(url)
         if response.ok:
