@@ -5,7 +5,7 @@ import html
 import requests
 import subprocess
 from web3 import Web3
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, timedelta, timezone, date
 
 CONFIG_FILE = "config.json"
 VENV_DIR = ".venv"
@@ -24,124 +24,125 @@ ABI = [
     }
 ]
 
-def create_virtual_env():
-    if not os.path.exists(VENV_DIR):
-        print("Creating virtual environment...")
-        subprocess.run(f"python3 -m venv {VENV_DIR}", shell=True)
-    activate_script = f"{VENV_DIR}/bin/activate"
-    if os.name == "nt":
-        activate_script = f"{VENV_DIR}\\Scripts\\activate.bat"
-    print(f"\n[!] Activate your virtual environment first:\nsource {activate_script}\n")
-    time.sleep(3)
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return None
+
+def save_config(cfg):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
 
 def get_user_config():
-    print("\n=== Telegram Setup ===")
-    config = {}
-    config["TELEGRAM_API_TOKEN"] = input("Enter Telegram Bot API Token: ").strip()
-    config["CHAT_ID"] = input("Enter Telegram Chat ID: ").strip()
-    config["SCREEN_NAME"] = input("Enter screen session name, e.g: gensyn: ").strip()
-    config["NODE_NO"] = input("Enter Node No , e.g: 1,2,3: ")
-    config["TELEGRAM_ID"] = input("Enter Telegram ID linked to gensyn: ").strip()
-    return config
+    print("\n=== Setup Config ===")
+    cfg = {}
+    cfg["TELEGRAM_API_TOKEN"] = input("Enter Telegram Bot API Token: ").strip()
+    cfg["CHAT_ID"] = input("Enter Telegram Chat ID: ").strip()
+    cfg["EOA"] = input("Enter your EOA address: ").strip()
+    cfg["TELEGRAM_ID"] = input("Enter your Telegram numeric ID: ").strip()
+    delay = input("Enter delay in seconds (default 1800 = 30 mins): ").strip()
+    cfg["DELAY_SECONDS"] = int(delay) if delay else 1800
+    cfg["SCREEN_NAME"] = input("Enter screen session name (optional): ").strip()
+    return cfg
 
-def save_config(config):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        return None
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
-
-def send_telegram_message(token, chat_id, message: str):
+def send_telegram_message(token, chat_id, msg):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    return requests.post(url, json=payload)
+    payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        return r.ok
+    except Exception as e:
+        print("Telegram send error:", e)
+        return False
 
-def get_time_ago(utc_str):
-    dt_utc = datetime.fromisoformat(utc_str)
-    dt_utc = dt_utc.replace(tzinfo=timezone.utc)
-    dt_ist = dt_utc.astimezone(timezone(timedelta(hours=5, minutes=30)))
-    ago = datetime.now(timezone.utc) - dt_utc
-    hours = int(ago.total_seconds() // 3600)
-    mins = int((ago.total_seconds() % 3600) // 60)
-    ago_str = f"{hours}h {mins}m ago" if hours else f"{mins}m ago"
-    return dt_ist.strftime("%Y-%m-%d %H:%M:%S IST") + f" ({ago_str})"
-
-def get_last_screen_logs(screen_name="gensyn", lines=10):
+def get_last_logs(screen_name, lines=10):
+    if not screen_name:
+        return "(no screen session configured)"
     try:
         log_path = f"/tmp/{screen_name}_log.txt"
         subprocess.run(f"screen -S {screen_name} -X hardcopy {log_path}", shell=True, check=True)
         with open(log_path, "rb") as f:
-            content = f.read().decode("utf-8", errors="ignore")
-        return "\n".join(content.strip().split("\n")[-lines:])
+            logs = f.read().decode("utf-8", errors="ignore")
+        return "\n".join(logs.strip().split("\n")[-lines:])
     except Exception as e:
         return f"Log fetch error: {str(e)}"
 
-def get_peer_ids_from_eoa(eoa):
-    w3 = Web3(Web3.HTTPProvider(ALCHEMY_RPC))
-    contract = w3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=ABI)
-    peer_ids_nested = contract.functions.getPeerId([eoa]).call()
-    return peer_ids_nested[0] if peer_ids_nested else []
+def fetch_peer_ids(w3, contract, eoa):
+    return contract.functions.getPeerId([eoa]).call()[0]
 
 def fetch_user_data(telegram_id, peer_ids):
     url = "https://gswarm.dev/api/user/data"
-    headers = {
-        "Content-Type": "application/json",
-        "X-Telegram-ID": str(telegram_id),
-    }
-    resp = requests.post(url, headers=headers, json={"peerIds": peer_ids})
-    if resp.ok:
-        return resp.json()
+    headers = {"Content-Type": "application/json", "X-Telegram-ID": str(telegram_id)}
+    body = {"peerIds": peer_ids}
+    r = requests.post(url, headers=headers, json=body, timeout=15)
+    if r.ok:
+        return r.json()
     return None
 
+def format_last_seen(last_seen_str):
+    try:
+        dt = datetime.fromisoformat(last_seen_str)
+        ist = dt.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30)))
+        diff = datetime.now(timezone.utc) - dt
+        hours_ago = int(diff.total_seconds() // 3600)
+        return f"{ist.strftime('%Y-%m-%d %H:%M:%S IST')} ({hours_ago}h ago)"
+    except:
+        return last_seen_str
+
 def main():
-    create_virtual_env()
+    # load or setup config
     config = load_config()
-    if not config:
+    if config:
+        print("Config file found.")
+        use_existing = input("Use existing config? (y/n): ").strip().lower()
+        if use_existing != "y":
+            config = get_user_config()
+            save_config(config)
+    else:
         config = get_user_config()
         save_config(config)
 
-    eoa = input("Enter EOA address: ").strip()
-    peer_ids = get_peer_ids_from_eoa(eoa)
-    print(f"Found Peer IDs: {peer_ids}")
+    # web3 contract
+    w3 = Web3(Web3.HTTPProvider(ALCHEMY_RPC))
+    contract = w3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDRESS), abi=ABI)
 
-    user_data = fetch_user_data(config["TELEGRAM_ID"], peer_ids)
-    if not user_data:
-        print("⚠️ Could not fetch user data")
-        return
+    while True:
+        try:
+            # fetch peer IDs
+            peer_ids = fetch_peer_ids(w3, contract, config["EOA"])
+            data = fetch_user_data(config["TELEGRAM_ID"], peer_ids)
 
-    messages = []
-    for r in user_data.get("ranks", []):
-        last_seen = get_time_ago(r["lastSeen"])
-        msg = (
-            f"<b>Peer {config['NODE_NO']}</b>\n"
-            f"Peer ID: <code>{r['peerId']}</code>\n"
-            f"EOA: <code>{eoa}</code>\n"
-            f"🏆 Rank: {r['rank']}\n"
-            f"🎯 Wins: {r['totalWins']}\n"
-            f"💰 Rewards: {r['totalRewards']}\n"
-            f"⏰ Last Seen: {last_seen}"
-        )
-        messages.append(msg)
+            messages = []
+            if data and "ranks" in data:
+                for r in data["ranks"]:
+                    msg = (
+                        f"<b>Peer</b>\n"
+                        f"Peer ID: <code>{r['peerId']}</code>\n"
+                        f"Rank: {r['rank']}\n"
+                        f"Wins: {r['totalWins']}\n"
+                        f"Rewards: {r['totalRewards']}\n"
+                        f"Last Seen: {format_last_seen(r['lastSeen'])}"
+                    )
+                    messages.append(msg)
 
-    stats = user_data.get("stats", {})
-    stats_msg = f"\n<b>Stats:</b>\nTotal Nodes: {stats.get('totalNodes')}, Ranked Nodes: {stats.get('rankedNodes')}"
+            stats_msg = ""
+            if data and "stats" in data:
+                s = data["stats"]
+                stats_msg = f"\n<b>Stats:</b>\nTotal Nodes: {s['totalNodes']}, Ranked Nodes: {s['rankedNodes']}"
 
-    logs = get_last_screen_logs(config["SCREEN_NAME"])
-    full_message = "\n\n".join(messages) + stats_msg + f"\n\n<b>Last Logs:</b>\n<code>{html.escape(logs)}</code>"
+            logs = get_last_logs(config["SCREEN_NAME"])
+            full_message = "\n\n".join(messages) + stats_msg + f"\n\n<b>Last Logs:</b>\n<code>{html.escape(logs)}</code>"
 
-    response = send_telegram_message(config["TELEGRAM_API_TOKEN"], config["CHAT_ID"], full_message)
-    if response.ok:
-        print("✅ Telegram message sent!")
-    else:
-        print("❌ Telegram error:", response.text)
+            ok = send_telegram_message(config["TELEGRAM_API_TOKEN"], config["CHAT_ID"], full_message)
+            print(f"[{datetime.now()}] Sent: {ok}")
+
+        except Exception as e:
+            err = f"⚠️ Error: {html.escape(str(e))}"
+            send_telegram_message(config["TELEGRAM_API_TOKEN"], config["CHAT_ID"], err)
+            print("Error:", e)
+
+        time.sleep(config["DELAY_SECONDS"])
 
 if __name__ == "__main__":
     main()
