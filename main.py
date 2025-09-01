@@ -5,23 +5,23 @@ import html
 import requests
 import subprocess
 from web3 import Web3
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, timedelta
+import pytz
 
 CONFIG_FILE = "config.json"
-EOA_CACHE_FILE = "eoa_cache.json"
 VENV_DIR = ".venv"
 
-# Constants
-ALCHEMY_RPC = "https://gensyn-testnet.g.alchemy.com/v2/TD5tr7mo4VfXlSaolFlSr3tL70br2M9J"
+# Gensyn Testnet Constants
+ALCHEMY_RPC = "https://gensyn-testnet.g.alchemy.com/public"
 CONTRACT_ADDRESS = "0xFaD7C5e93f28257429569B854151A1B8DCD404c2"
 
 ABI = [
     {
-        "name": "getEoa",
+        "name": "getPeerId",
         "type": "function",
         "stateMutability": "view",
-        "inputs": [{"name": "peerIds", "type": "string[]"}],
-        "outputs": [{"name": "", "type": "address[]"}]
+        "inputs": [{"name": "eoaAddresses", "type": "address[]"}],
+        "outputs": [{"name": "", "type": "string[][]"}]
     }
 ]
 
@@ -33,18 +33,17 @@ def create_virtual_env():
     if os.name == "nt":
         activate_script = f"{VENV_DIR}\\Scripts\\activate.bat"
     print(f"\n[!] Activate your virtual environment first:\nsource {activate_script}\n")
-    time.sleep(3)
+    time.sleep(2)
 
 def get_user_config():
-    print("\n=== Setup ===")
+    print("\n=== Telegram Setup ===")
     config = {}
     config["TELEGRAM_API_TOKEN"] = input("Enter Telegram Bot API Token: ").strip()
     config["CHAT_ID"] = input("Enter Telegram Chat ID: ").strip()
     config["DELAY_SECONDS"] = int(input("Enter delay in seconds (e.g., 1800 for 30 mins): ").strip())
-    config["PEER_NAME"] = input("Enter Peer Name (e.g., sly loud alpaca): ").strip()
-    config["SCREEN_NAME"] = input("Enter screen session name, e.g: gensyn: ").strip()
+    config["EOA"] = input("Enter your EOA address: ").strip()
+    config["SCREEN_NAME"] = input("Enter screen session name (for logs), e.g: gensyn: ").strip()
     config["NODE_NO"] = input("Enter Node No , e.g: 1,2,3: ")
-    config["EOA"] = input("Enter EOA Address: ").strip()
     return config
 
 def save_config(config):
@@ -82,73 +81,41 @@ def get_last_screen_logs(screen_name="gensyn", lines=10):
     except Exception as e:
         return f"Log fetch error: {str(e)}"
 
-def fetch_peer_data(peer_name):
-    url_name = peer_name.replace(" ", "%20")
-    url = f"https://dashboard.gensyn.ai/api/v1/peer?name={url_name}"
+def get_peer_ids_from_eoa(w3, contract, eoa):
     try:
-        response = requests.get(url)
-        if response.ok:
-            return response.json()
-    except:
-        pass
-    return None
+        result = contract.functions.getPeerId([eoa]).call()
+        return result[0] if result else []
+    except Exception as e:
+        print(f"⚠️ Failed to get peer IDs for {eoa}: {e}")
+        return []
 
 def fetch_rank_data(telegram_id, peer_ids):
     url = "https://gswarm.dev/api/user/data"
+    headers = {"Content-Type": "application/json", "X-Telegram-ID": str(telegram_id)}
+    payload = {"peerIds": peer_ids}
     try:
-        resp = requests.post(
-            url,
-            headers={"Content-Type": "application/json", "X-Telegram-ID": telegram_id},
-            json={"peerIds": peer_ids},
-        )
-        if resp.ok:
-            return resp.json()
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.ok:
+            return r.json()
     except Exception as e:
-        print("Rank fetch error:", e)
-    return {}
+        print(f"⚠️ API error: {e}")
+    return None
 
-def fetch_eoa_mapping(w3, contract, peer_ids):
-    today = str(date.today())
-    if os.path.exists(EOA_CACHE_FILE):
-        with open(EOA_CACHE_FILE) as f:
-            data = json.load(f)
-            if data.get("date") == today:
-                return data.get("mapping", {})
-
-    addresses = contract.functions.getEoa(peer_ids).call()
-    mapping = {pid: eoa for pid, eoa in zip(peer_ids, addresses)}
-    with open(EOA_CACHE_FILE, "w") as f:
-        json.dump({"date": today, "mapping": mapping}, f, indent=4)
-    return mapping
-
-def format_last_seen(last_seen_iso):
+def format_last_seen(last_seen_str):
     try:
-        dt = datetime.fromisoformat(last_seen_iso)
-        ist = dt.astimezone(timezone(timedelta(hours=5, minutes=30)))
-        ago = datetime.now(ist) - ist
-        minutes_ago = int(ago.total_seconds() // 60)
-        if minutes_ago < 60:
-            ago_str = f"{minutes_ago}m ago"
+        utc_time = datetime.fromisoformat(last_seen_str)
+        ist = pytz.timezone("Asia/Kolkata")
+        ist_time = utc_time.astimezone(ist)
+        diff = datetime.now(ist) - ist_time
+        mins = int(diff.total_seconds() // 60)
+        if mins < 60:
+            ago = f"{mins}m ago"
         else:
-            hours = minutes_ago // 60
-            ago_str = f"{hours}h ago"
-        return f"{ist.strftime('%Y-%m-%d %H:%M:%S IST')} ({ago_str})"
+            hrs = mins // 60
+            ago = f"{hrs}h ago"
+        return ist_time.strftime("%Y-%m-%d %H:%M:%S IST") + f" ({ago})"
     except:
-        return last_seen_iso
-
-def build_message(config, peer_info, rank_data, stats, last_logs):
-    return (
-        f"Peer {config['PEER_NAME']} {config['NODE_NO']}\n"
-        f"Peer ID: {peer_info['peerId']}\n"
-        f"EOA: {config['EOA']}\n"
-        f"🏆 Rank: {rank_data['rank']}\n"
-        f"🎯 Wins: {rank_data['totalWins']}\n"
-        f"💰 Rewards: {rank_data['totalRewards']}\n"
-        f"⏰ Last Seen: {format_last_seen(rank_data['lastSeen'])}\n"
-        f"Stats:\n"
-        f"Total Nodes: {stats['totalNodes']}, Ranked Nodes: {stats['rankedNodes']}\n\n"
-        f"Last Logs:\n{last_logs}"
-    )
+        return last_seen_str
 
 def main():
     create_virtual_env()
@@ -168,19 +135,34 @@ def main():
 
     while True:
         try:
-            peer_info = fetch_peer_data(config["PEER_NAME"])
-            if not peer_info:
-                raise Exception("Peer not found")
+            peer_ids = get_peer_ids_from_eoa(w3, contract, config["EOA"])
+            if not peer_ids:
+                raise Exception("No peer IDs found for EOA.")
 
-            peer_ids = [peer_info["peerId"]]
-            eoa_map = fetch_eoa_mapping(w3, contract, peer_ids)
+            data = fetch_rank_data(config["CHAT_ID"], peer_ids)
+            if not data:
+                raise Exception("No data returned from API.")
 
-            rank_data_resp = fetch_rank_data(config["CHAT_ID"], peer_ids)
-            rank_data = rank_data_resp.get("ranks", [{}])[0]
-            stats = rank_data_resp.get("stats", {"totalNodes": 0, "rankedNodes": 0})
+            ranks = data.get("ranks", [])
+            stats = data.get("stats", {})
+
+            messages = []
+            for i, rank in enumerate(ranks, 1):
+                msg = (
+                    f"<b>Peer {config['NODE_NO']}</b>\n"
+                    f"Peer ID: <code>{rank['peerId']}</code>\n"
+                    f"EOA: <code>{config['EOA']}</code>\n"
+                    f"🏆 Rank: {rank['rank']}\n"
+                    f"🎯 Wins: {rank['totalWins']}\n"
+                    f"💰 Rewards: {rank['totalRewards']}\n"
+                    f"⏰ Last Seen: {format_last_seen(rank['lastSeen'])}\n"
+                    f"Stats:\n"
+                    f"Total Nodes: {stats.get('totalNodes', 0)}, Ranked Nodes: {stats.get('rankedNodes', 0)}"
+                )
+                messages.append(msg)
 
             logs = get_last_screen_logs(config["SCREEN_NAME"])
-            full_message = build_message(config, peer_info, rank_data, stats, logs)
+            full_message = "\n\n".join(messages) + f"\n\n<b>Last Logs:</b>\n<code>{html.escape(logs)}</code>"
 
             response = send_telegram_message(config["TELEGRAM_API_TOKEN"], config["CHAT_ID"], full_message)
             log_message(full_message)
