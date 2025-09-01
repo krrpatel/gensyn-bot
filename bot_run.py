@@ -5,7 +5,7 @@ from pathlib import Path
 
 VENV_DIR = Path(".venv")
 MAIN_SCRIPT = "main.py"
-REQUIREMENTS = ["web3", "requests"]
+REQUIREMENTS = ["web3", "requests", "pytz"]
 
 def create_venv():
     print("Creating virtual environment...")
